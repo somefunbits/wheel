@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>转盘 Wheel</title>
+<style>
+  :root {
+    color-scheme: light;
+    --blue: #3b7ddd;
+    --ink: #333;
+    --muted: #8a8f99;
+    --soft: #eff0f6;
+    --size: min(calc(100vw - 16px), 58dvh, 640px);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: #fff; }
+  body {
+    display: flex; flex-direction: column; align-items: center;
+    min-height: 100dvh;
+    padding: max(14px, env(safe-area-inset-top)) 8px max(10px, env(safe-area-inset-bottom));
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
+  }
+  h1 {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    margin: 0; padding: 0 6px; color: var(--blue);
+    font-size: clamp(22px, 6.4vw, 30px); font-weight: 600; text-align: center;
+  }
+  html[lang=en] h1 { font-size: clamp(18px, 5.2vw, 30px); }
+  button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+  .icon { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .share { flex: none; width: 34px; height: 34px; padding: 3px; color: var(--blue); }
+  .result-box {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    width: 100%; max-width: 560px; min-height: 104px; padding: 8px 20px; text-align: center;
+  }
+  #result { font-size: clamp(19px, 5.2vw, 25px); font-weight: 600; line-height: 1.32; }
+  #more { min-height: 20px; margin-top: 4px; color: var(--blue); font-size: 14px; font-weight: 600; }
+  .wheel { position: relative; flex: none; width: var(--size); height: var(--size); margin: auto 0; }
+  canvas { display: block; width: 100%; height: 100%; will-change: transform; }
+  .hub { position: absolute; left: 50%; top: 50%; width: 15.5%; height: 15.5%; transform: translate(-50%, -50%); }
+  .hub::before {
+    content: ""; position: absolute; left: 50%; bottom: 72%;
+    width: 42%; height: 62%; transform: translateX(-50%);
+    background: #f1f1f3; clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  }
+  .hub::after {
+    content: ""; position: absolute; inset: -6%; z-index: 0; border-radius: 50%;
+    background: #f1f1f3;
+  }
+  #go {
+    position: absolute; inset: 0; z-index: 1; display: grid; place-items: center;
+    border-radius: 50%; border: 2px dashed var(--blue); background: #fff;
+    box-shadow: 0 0 0 3px #fff; color: #2f83ea; font-weight: 900;
+    font-family: "Arial Rounded MT Bold", "Arial Black", -apple-system, sans-serif;
+    font-size: calc(var(--size) * .058); letter-spacing: -.02em;
+    transition: transform .12s;
+  }
+  #go:active { transform: scale(.94); }
+  #go:disabled { cursor: default; }
+  #go:focus-visible, .round:focus-visible, .share:focus-visible, .lang:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+  .bar {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    width: 100%; max-width: 640px; padding: 12px 10px 0;
+  }
+  .round { flex: none; width: 52px; height: 52px; padding: 13px; border-radius: 50%; background: var(--soft); color: var(--blue); }
+  .round:disabled { opacity: .45; cursor: default; }
+  .lang {
+    display: flex; align-items: center; gap: 2px; height: 44px; padding: 4px;
+    border-radius: 999px; background: var(--soft); font-size: 15px; font-weight: 600;
+  }
+  .lang span {
+    display: grid; place-items: center; min-width: 58px; height: 36px; padding: 0 12px;
+    border-radius: 999px; color: var(--muted);
+  }
+  .lang[data-active=zh] span:first-child,
+  .lang[data-active=en] span:last-child { background: var(--blue); color: #fff; }
+  .note { margin-top: 8px; color: var(--muted); font-size: 12px; line-height: 1.35; text-align: center; }
+  dialog {
+    width: min(calc(100vw - 32px), 460px); max-height: calc(100dvh - 48px);
+    padding: 20px; border: 0; border-radius: 16px; color: var(--ink);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, .22);
+  }
+  dialog::backdrop { background: rgba(0, 0, 0, .4); }
+  dialog h2 { margin: 0 0 14px; font-size: 18px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 46px; border-bottom: 1px solid var(--soft); }
+  .row input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--blue); }
+  select { font: inherit; padding: 6px 8px; border: 1px solid #d9dbe3; border-radius: 8px; background: #fff; color: inherit; }
+  textarea {
+    display: block; width: 100%; height: min(48dvh, 380px); padding: 10px;
+    border: 1px solid #d9dbe3; border-radius: 10px; resize: vertical;
+    font: inherit; font-size: 16px; line-height: 1.45; color: inherit;
+  }
+  .hint { margin: 0 0 10px; color: var(--muted); font-size: 13px; }
+  .error { margin: 8px 0 0; color: #d0413f; font-size: 13px; }
+  .error:empty { display: none; }
+  .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  .btn { min-height: 40px; padding: 8px 14px; border-radius: 10px; background: var(--soft); font-size: 15px; }
+  .btn.primary { background: var(--blue); color: #fff; }
+  .btn.left { margin-right: auto; }
+  #toast {
+    position: fixed; left: 50%; bottom: 112px; transform: translateX(-50%);
+    max-width: calc(100vw - 32px); padding: 8px 14px; border-radius: 10px;
+    background: rgba(30, 30, 34, .88); color: #fff; font-size: 14px; text-align: center;
+    opacity: 0; pointer-events: none; transition: opacity .2s;
+  }
+  #toast.on { opacity: 1; }
+  #gate { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 16px; background: #fff; }
+  .gate-card { max-width: 400px; text-align: center; line-height: 1.5; }
+  .gate-card h2 { margin: 0 0 12px; color: var(--blue); font-size: 22px; }
+  .gate-card p { margin: 0 0 6px; }
+  .gate-card .actions { flex-wrap: wrap; justify-content: center; }
+</style>
+</head>
+<body>
+  <h1>
+    <span data-i18n="title"></span>
+    <button class="share" id="share" data-i18n-label="share">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 4H6a2.5 2.5 0 0 0-2.5 2.5v11A2.5 2.5 0 0 0 6 20h12a2.5 2.5 0 0 0 2.5-2.5V14"/><path d="M15 3.5 21 9l-6 5.5"/><path d="M21 9h-5c-3.5 0-6 2.3-6 6"/></svg>
+    </button>
+  </h1>
+  <div class="result-box">
+    <div id="result" aria-live="polite">??</div>
+    <div id="more"></div>
+  </div>
+  <div class="wheel">
+    <canvas id="c" aria-hidden="true"></canvas>
+    <div class="hub"><button id="go" data-i18n-label="spin">GO</button></div>
+  </div>
+  <div class="bar">
+    <button class="round" id="openSettings" data-i18n-label="settings">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-2.91 1.2V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 7.1 19.7l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0-1.2-2.91H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.3 7.1l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 2.91-1.2V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 2.91 1.2l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0 1.2 2.91H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg>
+    </button>
+    <button class="lang" id="lang" data-i18n-label="switchTo"><span lang="zh-CN">中文</span><span lang="en">EN</span></button>
+    <button class="round" id="openEdit" data-i18n-label="edit">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4H6a2.5 2.5 0 0 0-2.5 2.5v11A2.5 2.5 0 0 0 6 20h11a2.5 2.5 0 0 0 2.5-2.5V12"/><path d="M18 3l3 3-9 9-4 1 1-4z"/></svg>
+    </button>
+  </div>
+  <div class="note" data-i18n="note"></div>
+
+  <dialog id="settings">
+    <h2 data-i18n="settings"></h2>
+    <label class="row"><span data-i18n="sound"></span><input type="checkbox" id="sound"></label>
+    <label class="row"><span data-i18n="noRepeat"></span><input type="checkbox" id="noRepeat"></label>
+    <label class="row"><span data-i18n="speed"></span>
+      <select id="speed">
+        <option value="0" data-i18n="slow"></option>
+        <option value="1" data-i18n="normal"></option>
+        <option value="2" data-i18n="fast"></option>
+      </select>
+    </label>
+    <div class="actions"><button class="btn primary" id="closeSettings" data-i18n="done"></button></div>
+  </dialog>
+
+  <dialog id="edit">
+    <h2 data-i18n="edit"></h2>
+    <p class="hint" data-i18n="editHint"></p>
+    <textarea id="lines" spellcheck="false"></textarea>
+    <p class="error" id="editError" role="alert"></p>
+    <div class="actions">
+      <button class="btn left" id="resetLines" data-i18n="reset"></button>
+      <button class="btn" id="cancelEdit" data-i18n="cancel"></button>
+      <button class="btn primary" id="saveLines" data-i18n="save"></button>
+    </div>
+  </dialog>
+
+  <div id="toast" role="status"></div>
+
+  <div id="gate" role="dialog" aria-modal="true" aria-labelledby="gateTitle">
+    <div class="gate-card">
+      <h2 id="gateTitle">成人内容 · Adult content</h2>
+      <p lang="zh-CN">本页包含露骨的性内容,仅限 18 岁及以上成年人。</p>
+      <p lang="en">This page contains sexually explicit content, for adults 18+ only.</p>
+      <div class="actions">
+        <button class="btn" id="gateLeave">离开 · Leave</button>
+        <button class="btn primary" id="gateEnter">我已满 18 岁 · I'm 18+</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+const UI = {"zh": {"title": "你管这叫惩罚?", "spin": "开始转动", "share": "分享结果", "settings": "设置", "edit": "编辑内容", "switchTo": "Switch to English", "sound": "音效", "noRepeat": "转过的不再出现", "speed": "转动时长", "slow": "慢", "normal": "中", "fast": "快", "done": "完成", "editHint": "每行一项,至少 2 项。", "reset": "恢复默认", "cancel": "取消", "save": "保存", "note": "18+ · 双方自愿 · 不想做就再转一次", "more": "还要转 {n} 次", "copied": "已复制", "roundOver": "这一轮转完了,重新开始", "tooFew": "至少需要 2 项"}, "en": {"title": "You Call This a Punishment?", "spin": "Spin the wheel", "share": "Share result", "settings": "Settings", "edit": "Edit slices", "switchTo": "切换到中文", "sound": "Sound", "noRepeat": "Don't repeat slices", "speed": "Spin length", "slow": "Long", "normal": "Medium", "fast": "Short", "done": "Done", "editHint": "One slice per line, at least 2.", "reset": "Reset", "cancel": "Cancel", "save": "Save", "note": "18+ · Both must be into it · Not feeling it? Spin again", "more": "{n} more to spin", "copied": "Copied", "roundOver": "All done, starting a new round", "tooFew": "Add at least 2 slices"}};
+const DEFAULTS = [{"zh": "打对方pp留下巴掌", "en": "Spank your partner and leave a handprint", "short": "Spank, leave a handprint", "color": "#6b66ab"}, {"zh": "ns", "en": "Finish inside", "short": "Finish inside", "color": "#e45f61"}, {"zh": "夹紧他,不知道能不能受住", "en": "Clench tight and see if they can take it", "short": "Clench tight", "color": "#a182b7"}, {"zh": "保持三浅一深谁都不许喘", "en": "Three shallow, one deep, and nobody's allowed to moan", "short": "3 shallow, 1 deep, silent", "color": "#89cb9e"}, {"zh": "69?一定很爽", "en": "69? It'll feel amazing", "short": "69?", "color": "#76cd98"}, {"zh": "在镜子面前后入", "en": "Doggy style in front of a mirror", "short": "Doggy in the mirror", "color": "#ebe274"}, {"zh": "舌头伸出来,让对方咬", "en": "Stick out your tongue and let your partner bite it", "short": "Tongue out, get bitten", "color": "#de6a7d"}, {"zh": "让对方舔耳垂30秒", "en": "Let your partner lick your earlobe for 30 seconds", "short": "Earlobe licked, 30s", "color": "#a787c3"}, {"zh": "一边做ai一边说情话", "en": "Talk dirty the whole time you're having sex", "short": "Talk dirty during sex", "color": "#9de3f3"}, {"zh": "第二天把对方口醒", "en": "Tomorrow morning, wake your partner up with oral", "short": "Wake them with oral", "color": "#9bd7a5"}, {"zh": "耳朵吹气3下", "en": "Blow in your partner's ear 3 times", "short": "Blow in ear, 3x", "color": "#ebac5e"}, {"zh": "让对方咬一下大腿内侧", "en": "Let your partner bite your inner thigh", "short": "Inner thigh bite", "color": "#e3797b"}, {"zh": "让对方咬一下耳垂", "en": "Let your partner bite your earlobe", "short": "Earlobe bite", "color": "#a874bc"}, {"zh": "让对方咬一下大腿内侧", "en": "Let your partner bite your inner thigh", "short": "Inner thigh bite", "color": "#819ae1"}, {"zh": "让ta含住ru头/弟弟,30秒", "en": "Let your partner take your nipple or dick in their mouth for 30 seconds", "short": "Nipple or dick in mouth, 30s", "color": "#6eb880"}, {"zh": "蒙住眼睛,让对方随机亲吻你10下", "en": "Blindfolded, let your partner kiss you at random 10 times", "short": "Blindfolded, 10 kisses", "color": "#efc063"}, {"zh": "贴近对方耳朵说,你不行", "en": "Lean into their ear and whisper: \"Is that all you've got?\"", "short": "Whisper: that's all?", "color": "#e688b7"}, {"zh": "含住ta手指,深情地背诵《咏鹅》", "en": "With their finger in your mouth, passionately recite \"Roses are red\"", "short": "Finger in mouth, poetry", "color": "#ad8ce3"}, {"zh": "闭上眼睛,摸对方的身体30秒", "en": "Close your eyes and touch your partner's body for 30 seconds", "short": "Eyes closed, touch, 30s", "color": "#99def4"}, {"zh": "不穿衣服,紧紧拥抱1分钟", "en": "Naked, hold each other tight for 1 minute", "short": "Naked hug, 1 min", "color": "#a0e8ba"}, {"zh": "抓住对方的手帮你自wei", "en": "Take your partner's hand and use it to get yourself off", "short": "Use their hand on yourself", "color": "#f5e072"}, {"zh": "男上女下,谁先叫出来?", "en": "Missionary: who cries out first?", "short": "Missionary: who moans?", "color": "#e97778"}, {"zh": "选一个物品,让对方抽你20下", "en": "Pick an object and let your partner spank you with it 20 times", "short": "Pick an object, 20 spanks", "color": "#020202"}, {"zh": "舌吻5分钟不能分开哦~", "en": "French kiss for 5 minutes without breaking apart~", "short": "French kiss, 5 min", "color": "#fefefe"}, {"zh": "在ru头上夹上夹子", "en": "Put clips on your nipples", "short": "Nipple clips", "color": "#646c3a"}, {"zh": "汪一声听听?", "en": "Let's hear you bark?", "short": "Let's hear a bark?", "color": "#cc7f36"}, {"zh": "戴上眼罩,让对方摸你30秒", "en": "Put on a blindfold and let your partner touch you for 30 seconds", "short": "Blindfold, get touched, 30s", "color": "#dd509d"}, {"zh": "含住对方下面不许动30秒", "en": "Take your partner in your mouth and hold still for 30 seconds", "short": "Oral, no moving, 30s", "color": "#413e87"}, {"zh": "在对方身下涂上酸奶舔干净-15秒", "en": "Spread yogurt below your partner's waist and lick it clean, 15 seconds", "short": "Yogurt below the waist, 15s", "color": "#3c88d9"}, {"zh": "用舌头从对方的pp舔到肚子-3次", "en": "Lick from your partner's butt to their belly, 3 times", "short": "Lick butt to belly, 3x", "color": "#7c8c37"}, {"zh": "在对方胸部种草莓", "en": "Leave a hickey on your partner's chest", "short": "Hickey on the chest", "color": "#dc943d"}, {"zh": "把酸奶倒在胸前,让对方舔干净", "en": "Pour yogurt on your chest and let your partner lick it clean", "short": "Yogurt on chest, lick it", "color": "#db53c6"}, {"zh": "趴下让对方亲肩膀-15秒", "en": "Lie face down and let your partner kiss your shoulders for 15 seconds", "short": "Shoulder kisses, 15s", "color": "#534c9a"}, {"zh": "吮吸手指一根一根认真-30秒", "en": "Suck their fingers one by one, slowly, for 30 seconds", "short": "Suck each finger, 30s", "color": "#50a9f0"}, {"zh": "舔对方的耳垂-10下", "en": "Lick your partner's earlobe 10 times", "short": "Lick earlobe, 10x", "color": "#81a244"}, {"zh": "敞开腿由对方观赏-30秒", "en": "Spread your legs and let your partner admire you for 30 seconds", "short": "Legs open, be admired, 30s", "color": "#e7ac3b"}, {"zh": "再转2次,全部完成", "en": "Spin 2 more times and do them all", "short": "Spin 2 more, do them all", "spins": 2, "color": "#cb65a8"}, {"zh": "用舌头从对方的pp舔到肚子3次", "en": "Lick from your partner's butt to their belly, 3 times", "short": "Lick butt to belly, 3x", "color": "#98def1"}, {"zh": "给对方手,并舔ru头15秒", "en": "Give a hand job while licking their nipples for 15 seconds", "short": "Hand job + nipples, 15s", "color": "#ae8de5"}, {"zh": "坐在对方脸上15秒", "en": "Sit on your partner's face for 15 seconds", "short": "Sit on their face, 15s", "color": "#e288b6"}, {"zh": "在对方胸部种草莓3个", "en": "Leave 3 hickeys on your partner's chest", "short": "3 hickeys on the chest", "color": "#ecbd65"}, {"zh": "吸住对方ru头旋转舌头15秒", "en": "Suck their nipple and swirl your tongue for 15 seconds", "short": "Suck and swirl nipple, 15s", "color": "#70b880"}, {"zh": "被对方揉pp30秒", "en": "Let your partner squeeze your butt for 30 seconds", "short": "Butt squeezed, 30s", "color": "#7f9ae0"}, {"zh": "再转3次,全部完成", "en": "Spin 3 more times and do them all", "short": "Spin 3 more, do them all", "spins": 3, "color": "#a875b9"}, {"zh": "大腿夹住对方的头上下移动-30秒", "en": "Grip your partner's head with your thighs and move up and down for 30 seconds", "short": "Thighs around head, 30s", "color": "#e3787b"}, {"zh": "网购一件情趣用品", "en": "Order a sex toy online", "short": "Order a sex toy", "color": "#e8aa5e"}, {"zh": "石头剪刀布,输的脱一件衣服", "en": "Rock paper scissors: the loser takes off one piece of clothing", "short": "RPS, loser strips one item", "color": "#9dd9a5"}, {"zh": "今晚的套都由你来带", "en": "You're in charge of tonight's condoms", "short": "You bring the condoms", "color": "#9ce0f0"}, {"zh": "闭上眼睛,让对方探索身体30秒", "en": "Close your eyes and let your partner explore your body for 30 seconds", "short": "Eyes closed, explored, 30s", "color": "#a886c5"}, {"zh": "舔对方手指15秒", "en": "Lick your partner's fingers for 15 seconds", "short": "Lick fingers, 15s", "color": "#e5687e"}, {"zh": "邀请对方进入,不停喊对方的爱称", "en": "Invite your partner in and keep calling them by their pet name", "short": "Invite in, say pet names", "color": "#ece276"}, {"zh": "揉捏对方的R头/弟弟-30秒", "en": "Play with your partner's nipple or dick for 30 seconds", "short": "Play with nipple or dick, 30s", "color": "#74cd98"}, {"zh": "在对方胸部留下指甲印", "en": "Leave nail marks on your partner's chest", "short": "Nail marks on the chest", "color": "#8ac99d"}, {"zh": "轻轻咬对方的R头-10下", "en": "Gently nibble your partner's nipple 10 times", "short": "Nibble nipple, 10x", "color": "#a182b8"}, {"zh": "让对方用手弄1分钟", "en": "Let your partner use their hands on you for 1 minute", "short": "Their hands on you, 1 min", "color": "#df5f60"}, {"zh": "被对方咬一口屁gu", "en": "Let your partner bite your butt", "short": "Butt bite", "color": "#e1ce7b"}, {"zh": "拔一根对方裤裆里的毛", "en": "Pluck one hair from your partner's crotch", "short": "Pluck one crotch hair", "color": "#74af86"}, {"zh": "含一颗糖果舌吻-30秒", "en": "French kiss with a candy in your mouth for 30 seconds", "short": "Candy French kiss, 30s", "color": "#93d8d8"}, {"zh": "在对方脖子种心形草莓-30秒", "en": "Leave a heart-shaped hickey on your partner's neck, 30 seconds", "short": "Heart hickey on neck, 30s", "color": "#9670a0"}, {"zh": "用舌尖在对方pp写名字", "en": "Write your name on your partner's butt with the tip of your tongue", "short": "Tongue-write name on butt", "color": "#e2869a"}, {"zh": "被对方舔耳垂5次", "en": "Let your partner lick your earlobe 5 times", "short": "Earlobe licked, 5x", "color": "#dbb862"}, {"zh": "耳朵吹气1分钟", "en": "Blow in your partner's ear for 1 minute", "short": "Blow in ear, 1 min", "color": "#96c154"}, {"zh": "敞开腿由对方观赏-30秒", "en": "Spread your legs and let your partner admire you for 30 seconds", "short": "Legs open, be admired, 30s", "color": "#86c9bc"}, {"zh": "把酸奶倒在胸前,让对方舔干净", "en": "Pour yogurt on your chest and let your partner lick it clean", "short": "Yogurt on chest, lick it", "color": "#7971c2"}, {"zh": "再转2次,全部完成", "en": "Spin 2 more times and do them all", "short": "Spin 2 more, do them all", "spins": 2, "color": "#cd7c99"}, {"zh": "手机调成震动夹到腿间,拨打号码", "en": "Put a phone on vibrate between your legs while your partner calls it", "short": "Vibrating phone, they call", "color": "#e59a60"}, {"zh": "让对方从身下带出液体一次", "en": "Let your partner make you come once", "short": "Let them make you come", "color": "#90b64d"}, {"zh": "手伸进对方裤子探索-30秒", "en": "Slip your hand into your partner's pants and explore for 30 seconds", "short": "Hand in their pants, 30s", "color": "#7fcddf"}];
+const DURATIONS = [6.5, 4.5, 2.8];
+const $ = id => document.getElementById(id);
+const canvas = $('c'), ctx = canvas.getContext('2d');
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const FONT = '-apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif';
+
+const store = {
+  key: 'wheel',
+  read() { try { return JSON.parse(localStorage.getItem(this.key)) || {}; } catch { return {}; } },
+  write(v) { try { localStorage.setItem(this.key, JSON.stringify(v)); } catch {} },
+};
+const state = {
+  lang: /^zh/i.test(navigator.language) ? 'zh' : 'en',
+  sound: true, noRepeat: false, speed: 1, lines: null, adult: false,
+  ...store.read(),
+};
+const t = () => UI[state.lang];
+
+let items = [], used = new Set(), angle = 0, spinning = false, pending = 0, currentIndex = -1, audio = null, lastTick = 0;
+
+// state.lines mixes default slice indexes (translated) with custom strings (shown as typed)
+function buildItems() {
+  const lines = state.lines || DEFAULTS.map((_, i) => i);
+  items = lines.map((line, i) => typeof line === 'number'
+    ? DEFAULTS[line]
+    : { zh: line, en: line, short: line, color: DEFAULTS[i % DEFAULTS.length].color });
+  used.clear();
+}
+
+function isLight(hex) {
+  const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+  return (.2126 * r + .7152 * g + .0722 * b) / 255 > .74;
+}
+
+function drawLabelStacked(label, R, small, big) {
+  const chars = Array.from(label.replace(/[《》]/g, ''));
+  // largest size whose innermost glyph still fits the wedge at that radius
+  const wedge = 2 * Math.tan(Math.PI / items.length);
+  const fits = wedge * R * .965 / (1 + wedge * chars.length);
+  const size = Math.max(small, Math.min(big, fits));
+  const cap = Math.floor(R * .62 / size);
+  const shown = chars.length > cap ? [...chars.slice(0, cap - 3), '·', '·', '·'] : chars;
+  ctx.font = `600 ${size}px ${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  shown.forEach((ch, i) => ctx.fillText(ch, 0, -R * .965 + size * (i + .5)));
+}
+
+function drawLabelLine(label, R, small, big) {
+  const room = R * .62;
+  ctx.font = `600 ${big}px ${FONT}`;
+  const size = Math.max(small, Math.min(big, .97 * big * room / ctx.measureText(label).width));
+  ctx.font = `600 ${size}px ${FONT}`;
+  let text = label;
+  while (text.length > 3 && ctx.measureText(text).width > room) text = text.slice(0, -2).trimEnd() + '…';
+  ctx.rotate(Math.PI / 2);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, -R * .965, 0);
+}
+
+function draw() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  const box = canvas.parentElement.clientWidth;
+  const px = Math.round(box * dpr);
+  if (canvas.width !== px) canvas.width = canvas.height = px;
+  const c = px / 2, R = c * .985, inner = R * .975;
+  const step = 2 * Math.PI / items.length;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, px, px);
+  ctx.fillStyle = '#f1f1f3';
+  ctx.beginPath();
+  ctx.arc(c, c, R, 0, 2 * Math.PI);
+  ctx.fill();
+
+  // slices are numbered clockwise, slice 0 under the pointer at angle 0
+  items.forEach((item, i) => {
+    const mid = i * step - Math.PI / 2;
+    ctx.save();
+    ctx.globalAlpha = used.has(i) ? .22 : 1;
+    ctx.fillStyle = item.color;
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = Math.max(1, px / 420);
+    ctx.beginPath();
+    ctx.moveTo(c, c);
+    ctx.arc(c, c, inner, mid - step / 2, mid + step / 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  });
+
+  // sizes match the original at 68 slices and grow as custom lists get shorter
+  const scale = Math.min(2.4, 68 / items.length);
+  const big = inner * .046 * scale, small = inner * .031 * Math.min(scale, 1.6);
+  items.forEach((item, i) => {
+    ctx.save();
+    ctx.globalAlpha = used.has(i) ? .4 : 1;
+    ctx.translate(c, c);
+    ctx.rotate(i * step);
+    const dark = isLight(item.color);
+    ctx.fillStyle = dark ? '#3a3a3f' : '#fff';
+    if (!dark) { ctx.shadowColor = 'rgba(0,0,0,.28)'; ctx.shadowBlur = dpr; }
+    if (state.lang === 'zh') drawLabelStacked(item.zh, inner, small, big);
+    else drawLabelLine(item.short, inner, small, big);
+    ctx.restore();
+  });
+}
+
+function randInt(n) {
+  const limit = Math.floor(0x100000000 / n) * n;
+  const buf = new Uint32Array(1);
+  do crypto.getRandomValues(buf); while (buf[0] >= limit);
+  return buf[0] % n;
+}
+
+function tick() {
+  if (!state.sound || !audio) return;
+  const now = audio.currentTime;
+  if (now - lastTick < .035) return;
+  lastTick = now;
+  const osc = audio.createOscillator(), gain = audio.createGain();
+  osc.type = 'triangle';
+  osc.frequency.value = 1500;
+  gain.gain.setValueAtTime(.06, now);
+  gain.gain.exponentialRampToValueAtTime(.0001, now + .03);
+  osc.connect(gain).connect(audio.destination);
+  osc.start(now);
+  osc.stop(now + .03);
+}
+
+function chime() {
+  if (!state.sound || !audio) return;
+  [659, 880].forEach((f, i) => {
+    const time = audio.currentTime + i * .1;
+    const osc = audio.createOscillator(), gain = audio.createGain();
+    osc.frequency.value = f;
+    gain.gain.setValueAtTime(.09, time);
+    gain.gain.exponentialRampToValueAtTime(.0001, time + .3);
+    osc.connect(gain).connect(audio.destination);
+    osc.start(time);
+    osc.stop(time + .3);
+  });
+}
+
+function show() {
+  const landed = !spinning && currentIndex >= 0;
+  $('result').textContent = landed ? items[currentIndex][state.lang] : '??';
+  $('more').textContent = !spinning && pending > 0 ? t().more.replace('{n}', pending) : '';
+}
+
+function land(i) {
+  spinning = false;
+  $('go').disabled = $('openEdit').disabled = false;
+  currentIndex = i;
+  pending = Math.max(0, pending - 1) + (items[i].spins || 0);
+  show();
+  if (state.noRepeat) { used.add(i); draw(); }
+  chime();
+  if (navigator.vibrate) navigator.vibrate(30);
+}
+
+function spin() {
+  if (spinning) return;
+  if (state.sound && !audio) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (AC) audio = new AC();
+  }
+  if (audio && audio.state === 'suspended') audio.resume();
+
+  let pool = items.map((_, i) => i).filter(i => !state.noRepeat || !used.has(i));
+  if (!pool.length) {
+    used.clear();
+    draw();
+    toast(t().roundOver);
+    pool = items.map((_, i) => i);
+  }
+  const i = pool[randInt(pool.length)];
+  const step = 360 / items.length;
+  const offset = (randInt(800) / 1000 - .4) * step;
+  const turns = reduceMotion ? 1 : 6 + randInt(3);
+  const dest = -i * step + offset;
+  const delta = (((dest - angle) % 360) + 360) % 360 + 360 * turns;
+  const from = angle;
+  const ms = (reduceMotion ? .5 : DURATIONS[state.speed]) * 1000;
+  const start = performance.now();
+  let lastSlot = Math.round(from / step);
+
+  spinning = true;
+  $('go').disabled = $('openEdit').disabled = true;
+  show();
+
+  (function frame(now) {
+    const p = Math.min(1, (now - start) / ms);
+    angle = from + delta * (1 - Math.pow(1 - p, 4));
+    canvas.style.transform = `rotate(${angle}deg)`;
+    const slot = Math.round(angle / step);
+    if (slot !== lastSlot) { lastSlot = slot; tick(); }
+    if (p < 1) requestAnimationFrame(frame);
+    else { angle %= 360; land(i); }
+  })(start);
+}
+
+let toastTimer;
+function toast(msg) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('on'), 2000);
+}
+
+async function share() {
+  const title = t().title;
+  const text = currentIndex >= 0 ? `${title}\n${items[currentIndex][state.lang]}` : title;
+  if (navigator.share) {
+    try { await navigator.share({ title, text }); } catch {}
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(t().copied);
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.append(ta);
+    ta.select();
+    if (document.execCommand('copy')) toast(t().copied);
+    ta.remove();
+  }
+}
+
+function persist() {
+  store.write({ lang: state.lang, sound: state.sound, noRepeat: state.noRepeat, speed: state.speed, lines: state.lines, adult: state.adult });
+}
+
+function applyLang() {
+  document.documentElement.lang = state.lang === 'zh' ? 'zh-CN' : 'en';
+  document.title = t().title;
+  document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t()[el.dataset.i18n]; });
+  document.querySelectorAll('[data-i18n-label]').forEach(el => el.setAttribute('aria-label', t()[el.dataset.i18nLabel]));
+  $('lang').dataset.active = state.lang;
+  show();
+  draw();
+}
+
+function applyLines(lines) {
+  state.lines = lines;
+  persist();
+  buildItems();
+  pending = 0;
+  currentIndex = -1;
+  show();
+  draw();
+}
+
+if (state.adult) $('gate').remove();
+else {
+  $('gateEnter').addEventListener('click', () => {
+    state.adult = true;
+    persist();
+    $('gate').remove();
+  });
+  $('gateLeave').addEventListener('click', () => location.replace('about:blank'));
+}
+
+$('go').addEventListener('click', spin);
+$('share').addEventListener('click', share);
+$('lang').addEventListener('click', () => {
+  state.lang = state.lang === 'zh' ? 'en' : 'zh';
+  persist();
+  applyLang();
+});
+
+$('sound').checked = state.sound;
+$('noRepeat').checked = state.noRepeat;
+$('speed').value = state.speed;
+$('openSettings').addEventListener('click', () => $('settings').showModal());
+$('closeSettings').addEventListener('click', () => $('settings').close());
+$('sound').addEventListener('change', e => { state.sound = e.target.checked; persist(); });
+$('speed').addEventListener('change', e => { state.speed = +e.target.value; persist(); });
+$('noRepeat').addEventListener('change', e => {
+  state.noRepeat = e.target.checked;
+  used.clear();
+  persist();
+  draw();
+});
+
+$('openEdit').addEventListener('click', () => {
+  $('lines').value = items.map(it => it[state.lang]).join('\n');
+  $('editError').textContent = '';
+  $('edit').showModal();
+});
+$('cancelEdit').addEventListener('click', () => $('edit').close());
+$('resetLines').addEventListener('click', () => {
+  $('lines').value = DEFAULTS.map(d => d[state.lang]).join('\n');
+});
+$('saveLines').addEventListener('click', () => {
+  const lines = $('lines').value.split('\n').map(s => s.trim()).filter(Boolean);
+  if (lines.length < 2) { $('editError').textContent = t().tooFew; return; }
+  // a line that still matches a default slice stays translated in the other language
+  const defaults = DEFAULTS.map(d => d[state.lang]);
+  const parsed = lines.map((text, i) => {
+    if (defaults[i] === text) return i;
+    const found = defaults.indexOf(text);
+    return found >= 0 ? found : text;
+  });
+  const same = parsed.length === DEFAULTS.length && parsed.every((line, i) => line === i);
+  applyLines(same ? null : parsed);
+  $('edit').close();
+});
+
+buildItems();
+applyLang();
+new ResizeObserver(draw).observe(canvas.parentElement);
+</script>
+</body>
+</html>
